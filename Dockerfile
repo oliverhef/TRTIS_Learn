@@ -127,6 +127,9 @@ RUN cp -r ${SCRIPT_DIR} /tmp/scripts && \
 # Install OpenVINO
 # https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/Dockerfile.ubuntu_openvino
 ARG OPENVINO_VERSION=2019_R1.1
+RUN sed 's/git checkout/git checkout -f/g' /tmp/scripts/install_openvino.sh > tmp.txt && mv tmp.txt  /tmp/scripts/install_openvino.sh 
+RUN sed '19a rm -rf thirdparty/mkl-dnn/ && git checkout .' /tmp/scripts/install_openvino.sh > tmp.txt && mv tmp.txt  /tmp/scripts/install_openvino.sh
+RUN chmod +x /tmp/scripts/install_openvino.sh
 RUN /tmp/scripts/install_openvino.sh -o ${OPENVINO_VERSION}
 ENV INTEL_CVSDK_DIR /data/dldt/openvino_2019.1.144
 ENV INTEL_OPENVINO_DIR /data/dldt/openvino_2019.1.144

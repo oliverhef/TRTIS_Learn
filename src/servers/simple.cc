@@ -79,6 +79,7 @@ Usage(char** argv, const std::string& msg = std::string())
   LOG_ERROR << "\t-g Use GPU memory for input and output tensors";
   LOG_ERROR << "\t-v Enable verbose logging";
   LOG_ERROR << "\t-r [model repository absolute path]";
+  LOG_ERROR << "\t-m [tested model name]";
 
   exit(1);
 }
@@ -221,16 +222,21 @@ ParseModelConfig(
 template <typename T>
 void
 GenerateInputData(
-    std::vector<char>* input0_data, std::vector<char>* input1_data)
+    //std::vector<char>* input0_data, std::vector<char>* input1_data)
+    std::vector<char>* input0_data)
 {
-  input0_data->resize(16 * sizeof(T));
-  input1_data->resize(16 * sizeof(T));
-  for (size_t i = 0; i < 16; ++i) {
-    ((T*)input0_data->data())[i] = i;
-    ((T*)input1_data->data())[i] = 1;
+  size_t data_dim = 3*608*608;
+  input0_data->resize(data_dim * sizeof(T));
+  //input0_data->resize(16 * sizeof(T));
+  //input1_data->resize(16 * sizeof(T));
+  for (size_t i = 0; i < data_dim; ++i) {
+  //for (size_t i = 0; i < 16; ++i) {
+    ((T*)input0_data->data())[i] = 1;
+    //((T*)input0_data->data())[i] = i;
+    //((T*)input1_data->data())[i] = 1;
   }
 }
-
+/*
 template <typename T>
 void
 CompareResult(
@@ -252,24 +258,29 @@ CompareResult(
     }
   }
 }
-
+*/
 }  // namespace
 
 int
 main(int argc, char** argv)
 {
+  std::cout << "YiFu: My BUild Test!!!!\n\n\n";
   std::string model_repository_path;
+  std::string model_name;
   int verbose_level = 0;
 
   // Parse commandline...
   int opt;
-  while ((opt = getopt(argc, argv, "vgr:")) != -1) {
+  while ((opt = getopt(argc, argv, "vgr:m:")) != -1) {
     switch (opt) {
       case 'g':
         use_gpu_memory = true;
         break;
       case 'r':
         model_repository_path = optarg;
+        break;
+      case 'm':
+        model_name = optarg;
         break;
       case 'v':
         verbose_level = 1;
@@ -279,9 +290,13 @@ main(int argc, char** argv)
         break;
     }
   }
+  std::cout << "model_repository_path: " << model_repository_path << ", model_name: " << model_name << "\n";
 
   if (model_repository_path.empty()) {
     Usage(argv, "-r must be used to specify model repository path");
+  }
+  if (model_name.empty()) {
+    Usage(argv, "-m must be used to specify model name");
   }
 #ifndef TRTIS_ENABLE_GPU
   if (use_gpu_memory) {
@@ -364,7 +379,7 @@ main(int argc, char** argv)
     TRTSERVER_Protobuf* model_status_protobuf;
     FAIL_IF_ERR(
         TRTSERVER_ServerModelStatus(
-            server.get(), "simple", &model_status_protobuf),
+            server.get(), model_name.c_str(), &model_status_protobuf),
         "unable to get model status protobuf");
     const char* buffer;
     size_t byte_size;
@@ -377,17 +392,18 @@ main(int argc, char** argv)
       FAIL("error: failed to parse model status");
     }
 
-    auto itr = model_status.model_status().find("simple");
+    //auto itr = model_status.model_status().find("simple");
+    auto itr = model_status.model_status().find(model_name.c_str());
     if (itr == model_status.model_status().end()) {
-      FAIL("unable to find status for model 'simple'");
+      FAIL("unable to find status for model 'yolov3_608'");
     }
 
     auto vitr = itr->second.version_status().find(1);
     if (vitr == itr->second.version_status().end()) {
-      FAIL("unable to find version 1 status for model 'simple'");
+      FAIL("unable to find version 1 status for model 'yolov3_608'");
     }
 
-    LOG_INFO << "'simple' model is "
+    LOG_INFO << "'yolov3_608' model is "
              << ni::ModelReadyState_Name(vitr->second.ready_state());
     if (vitr->second.ready_state() == ni::ModelReadyState::MODEL_READY) {
       FAIL_IF_ERR(
@@ -414,13 +430,14 @@ main(int argc, char** argv)
 
   // The inference request provides meta-data with an
   // InferRequestHeader and the actual data via a provider.
-  const std::string model_name("simple");
+  //const std::string model_name("simple");
   int64_t model_version = -1;  // latest
 
   ni::InferRequestHeader request_header;
   request_header.set_id(123);
   request_header.set_batch_size(1);
 
+  /*
   auto input0 = request_header.add_input();
   input0->set_name(is_torch_model ? "INPUT__0" : "INPUT0");
   auto input1 = request_header.add_input();
@@ -430,6 +447,15 @@ main(int argc, char** argv)
   output0->set_name(is_torch_model ? "OUTPUT__0" : "OUTPUT0");
   auto output1 = request_header.add_output();
   output1->set_name(is_torch_model ? "OUTPUT__1" : "OUTPUT1");
+  */
+  auto input0 = request_header.add_input();
+  input0->set_name("000_net");
+  auto output0 = request_header.add_output();
+  output0->set_name("082_convolutional");
+  auto output1 = request_header.add_output();
+  output1->set_name("094_convolutional");
+  auto output2 = request_header.add_output();
+  output2->set_name("106_convolutional");
 
   std::string request_header_serialized;
   request_header.SerializeToString(&request_header_serialized);
@@ -446,24 +472,26 @@ main(int argc, char** argv)
   // Create the data for the two input tensors. Initialize the first
   // to unique integers and the second to all ones.
   std::vector<char> input0_data;
-  std::vector<char> input1_data;
+  //std::vector<char> input1_data;
   if (is_int) {
-    GenerateInputData<int32_t>(&input0_data, &input1_data);
+    GenerateInputData<int32_t>(&input0_data);
+    //GenerateInputData<int32_t>(&input0_data, &input1_data);
   } else {
-    GenerateInputData<float>(&input0_data, &input1_data);
+    GenerateInputData<float>(&input0_data);
+    //GenerateInputData<float>(&input0_data, &input1_data);
   }
 
   size_t input0_size = input0_data.size();
-  size_t input1_size = input1_data.size();
+  //size_t input1_size = input1_data.size();
 
   const void* input0_base = &input0_data[0];
-  const void* input1_base = &input1_data[0];
+  //const void* input1_base = &input1_data[0];
   auto memory_type = TRTSERVER_MEMORY_CPU;
 #ifdef TRTIS_ENABLE_GPU
   std::unique_ptr<void, decltype(gpu_data_deleter)> input0_gpu(
       nullptr, gpu_data_deleter);
-  std::unique_ptr<void, decltype(gpu_data_deleter)> input1_gpu(
-      nullptr, gpu_data_deleter);
+  //std::unique_ptr<void, decltype(gpu_data_deleter)> input1_gpu(
+  //    nullptr, gpu_data_deleter);
   if (use_gpu_memory) {
     void* dst;
     FAIL_IF_CUDA_ERR(
@@ -472,16 +500,16 @@ main(int argc, char** argv)
     FAIL_IF_CUDA_ERR(
         cudaMemcpy(dst, &input0_data[0], input0_size, cudaMemcpyHostToDevice),
         "setting INPUT0 data in GPU memory");
-    FAIL_IF_CUDA_ERR(
-        cudaMalloc(&dst, input1_size), "allocating GPU memory for INPUT1 data");
-    input1_gpu.reset(dst);
-    FAIL_IF_CUDA_ERR(
-        cudaMemcpy(dst, &input1_data[0], input1_size, cudaMemcpyHostToDevice),
-        "setting INPUT1 data in GPU memory");
+    //FAIL_IF_CUDA_ERR(
+    //    cudaMalloc(&dst, input1_size), "allocating GPU memory for INPUT1 data");
+    //input1_gpu.reset(dst);
+    //FAIL_IF_CUDA_ERR(
+    //    cudaMemcpy(dst, &input1_data[0], input1_size, cudaMemcpyHostToDevice),
+    //    "setting INPUT1 data in GPU memory");
   }
 
   input0_base = use_gpu_memory ? input0_gpu.get() : &input0_data[0];
-  input1_base = use_gpu_memory ? input1_gpu.get() : &input1_data[0];
+  //input1_base = use_gpu_memory ? input1_gpu.get() : &input1_data[0];
   memory_type = use_gpu_memory ? TRTSERVER_MEMORY_GPU : TRTSERVER_MEMORY_CPU;
 #endif  // TRTIS_ENABLE_GPU
 
@@ -490,11 +518,11 @@ main(int argc, char** argv)
           request_provider, input0->name().c_str(), input0_base, input0_size,
           memory_type),
       "assigning INPUT0 data");
-  FAIL_IF_ERR(
-      TRTSERVER_InferenceRequestProviderSetInputData(
-          request_provider, input1->name().c_str(), input1_base, input1_size,
-          memory_type),
-      "assigning INPUT1 data");
+  //FAIL_IF_ERR(
+  //    TRTSERVER_InferenceRequestProviderSetInputData(
+  //        request_provider, input1->name().c_str(), input1_base, input1_size,
+  //        memory_type),
+  //    "assigning INPUT1 data");
 
   // Perform inference...
   auto p = new std::promise<TRTSERVER_InferenceResponse*>();
@@ -534,7 +562,7 @@ main(int argc, char** argv)
       FAIL("error: failed to parse response header");
     }
 
-    LOG_INFO << "Model \"simple\" response header:";
+    LOG_INFO << "Model \"yolov3_608\" response header:";
     LOG_INFO << response_header.DebugString();
 
     FAIL_IF_ERR(
@@ -553,12 +581,7 @@ main(int argc, char** argv)
           response, output0->name().c_str(), &output0_content,
           &output0_byte_size, &output0_memory_type),
       "getting output0 result");
-  if (output0_byte_size != input0_size) {
-    FAIL(
-        "unexpected output0 byte-size, expected " +
-        std::to_string(input0_size) + ", got " +
-        std::to_string(output0_byte_size));
-  } else if (
+  if (
       (!use_gpu_memory) && (output0_memory_type == TRTSERVER_MEMORY_GPU)) {
     FAIL(
         "unexpected output0 memory type, expected to be allocated "
@@ -575,12 +598,7 @@ main(int argc, char** argv)
           response, output1->name().c_str(), &output1_content,
           &output1_byte_size, &output1_memory_type),
       "getting output1 result");
-  if (output1_byte_size != input1_size) {
-    FAIL(
-        "unexpected output1 byte-size, expected " +
-        std::to_string(input1_size) + ", got " +
-        std::to_string(output1_byte_size));
-  } else if (
+  if (
       (!use_gpu_memory) && (output1_memory_type == TRTSERVER_MEMORY_GPU)) {
     FAIL(
         "unexpected output1 memory type, expected to be allocated "
@@ -589,14 +607,33 @@ main(int argc, char** argv)
         MemoryTypeString(output1_memory_type));
   }
 
+  const void* output2_content;
+  size_t output2_byte_size;
+  TRTSERVER_Memory_Type output2_memory_type;
+  FAIL_IF_ERR(
+      TRTSERVER_InferenceResponseOutputData(
+          response, output2->name().c_str(), &output2_content,
+          &output2_byte_size, &output2_memory_type),
+      "getting output2 result");
+  if (
+      (!use_gpu_memory) && (output2_memory_type == TRTSERVER_MEMORY_GPU)) {
+    FAIL(
+        "unexpected output2 memory type, expected to be allocated "
+        "in " +
+        MemoryTypeString(TRTSERVER_MEMORY_CPU) + ", got " +
+        MemoryTypeString(output2_memory_type));
+  }
+
   const void* output0_result = output0_content;
   const void* output1_result = output1_content;
+  const void* output2_result = output2_content;
 
 #ifdef TRTIS_ENABLE_GPU
   // Different from CPU memory, outputs in GPU memory must be copied to CPU
   // memory to be read directly.
   std::vector<char> output0_data(output0_byte_size);
   std::vector<char> output1_data(output1_byte_size);
+  std::vector<char> output2_data(output2_byte_size);
   if (output0_memory_type == TRTSERVER_MEMORY_CPU) {
     LOG_INFO << "OUTPUT0 are stored in CPU memory";
   } else {
@@ -620,8 +657,20 @@ main(int argc, char** argv)
         "setting INPUT0 data in GPU memory");
     output1_result = &output1_data[0];
   }
-#endif  // TRTIS_ENABLE_GPU
 
+  if (output2_memory_type == TRTSERVER_MEMORY_CPU) {
+    LOG_INFO << "OUTPUT1 are stored in CPU memory";
+  } else {
+    LOG_INFO << "OUTPUT1 are stored in GPU memory";
+    FAIL_IF_CUDA_ERR(
+        cudaMemcpy(
+            &output2_data[0], output2_content, output2_byte_size,
+            cudaMemcpyDeviceToHost),
+        "setting INPUT0 data in GPU memory");
+    output2_result = &output2_data[0];
+  }
+#endif  // TRTIS_ENABLE_GPU
+/*
   if (is_int) {
     CompareResult<int32_t>(
         output0->name(), output1->name(), &input0_data[0], &input1_data[0],
@@ -631,6 +680,9 @@ main(int argc, char** argv)
         output0->name(), output1->name(), &input0_data[0], &input1_data[0],
         output0_result, output1_result);
   }
+*/
+  LOG_INFO << "Result_name: " << output0->name() << ", " << output1->name() << ", " << output2->name() << "\n";
+  LOG_INFO << "Result: " << ((float*)output0_result)[0] << ", " << ((float*)output1_result)[0] << ", " << ((float*)output2_result)[0] << "\n";
 
   FAIL_IF_ERR(
       TRTSERVER_InferenceResponseDelete(response),
